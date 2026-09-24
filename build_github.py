@@ -9,7 +9,8 @@ Nothing is loaded from a CDN. Three.js and the font files are committed to the
 repo, so the site has no third-party requests at all: it cannot be broken by a
 CDN outage, and it sets no third-party cookies.
 
-Output lands in site/ and is ready to drag into a repository.
+Output lands in docs/, which GitHub Pages can serve directly
+(Settings -> Pages -> folder: /docs), so the whole project can live in one repo.
 
 Run after every edit to index.html:    python3 build_github.py
 """
@@ -23,10 +24,10 @@ import urllib.request
 
 # Change this to the real address once the repo is published. It only affects
 # the canonical link and the social-card URLs, which must be absolute.
-SITE_URL = "https://arielnolson.github.io/portfolio/"
+SITE_URL = "https://www.arielolson.com/"
 
 SRC = pathlib.Path("index.html")
-OUT = pathlib.Path("site")
+OUT = pathlib.Path("docs")
 ASSETS = OUT / "assets"
 FONTS = ASSETS / "fonts"
 VENDOR = pathlib.Path("vendor")
@@ -224,6 +225,12 @@ doc = f"""<!DOCTYPE html>
 # GitHub Pages runs Jekyll unless told not to, which skips files starting with _
 (OUT / ".nojekyll").write_text("", encoding="utf-8")
 
+# Without this file GitHub reports the custom domain as improperly configured
+# (InvalidDNSError) and will not issue a TLS certificate for it.
+CUSTOM_DOMAIN = SITE_URL.replace("https://", "").replace("http://", "").strip("/")
+if CUSTOM_DOMAIN and not CUSTOM_DOMAIN.endswith("github.io"):
+    (OUT / "CNAME").write_text(CUSTOM_DOMAIN + "\n", encoding="utf-8")
+
 (OUT / "site.webmanifest").write_text(f"""{{
   "name": "Ariel Olson",
   "short_name": "Ariel Olson",
@@ -290,13 +297,17 @@ curve, and a figure eight as the page moves.
 
 ## Publishing on GitHub Pages
 
-1. Create a repository and drag the **contents of this folder** into it, so
-   `index.html` sits at the repository root.
-2. **Settings -> Pages -> Build and deployment**, source **Deploy from a
-   branch**, branch `main`, folder `/ (root)`. Save.
-3. The site is live a minute later at the address Pages prints.
-4. Edit `SITE_URL` in `build_github.py` to that address and rebuild, so the
-   canonical link and the social-card previews point at the right place.
+This folder is generated. Push the **whole project** to the repository, then:
+
+**Settings -> Pages -> Build and deployment**, source **Deploy from a branch**,
+branch `main`, folder **`/docs`**. Save.
+
+Serving from `/docs` means the repo can hold the source and the build scripts
+alongside the site. Do not point Pages at `/ (root)` — the `index.html` there is
+the headless artifact source and would be served instead of this one.
+
+`CNAME` carries the custom domain. If it goes missing, GitHub reports the domain
+as improperly configured and stops issuing the TLS certificate.
 
 ## What is here
 

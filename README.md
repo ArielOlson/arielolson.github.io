@@ -13,25 +13,41 @@ from one of those.
 
 ## Publishing to GitHub Pages
 
-> **Push the contents of `site/`, not this whole folder.**
+Push the **whole project**, then serve the site from the `docs/` folder.
+
+**Settings → Pages → Build and deployment**: source **Deploy from a branch**,
+branch `main`, folder **`/docs`**. Save.
+
+> **Do not point Pages at `/ (root)`.**
 >
 > The `index.html` in this root directory is the *source* file. It has no
 > `<!DOCTYPE>` and no `<head>` on purpose, because the Claude artifact platform
-> wraps it in those. If it ends up at a repository root, GitHub Pages will
-> serve it instead of the real page and the site will look broken.
->
-> `site/index.html` is the complete, standalone document. That is the one to
-> publish.
+> supplies those. Served directly it still renders, which makes the mistake easy
+> to miss — but it has no favicon, no page description, no social-card metadata,
+> and it pulls Three.js and the fonts off a CDN instead of using the local
+> copies. `docs/index.html` is the complete document.
 
-1. Create a repository.
-2. Drag the **contents of `site/`** in, so `site/index.html` lands as
-   `index.html` at the repository root.
-3. **Settings → Pages → Build and deployment**: source **Deploy from a branch**,
-   branch `main`, folder `/ (root)`. Save.
-4. A minute later the site is live at the address Pages prints.
-5. Set `SITE_URL` at the top of `build_github.py` to that address and rebuild.
-   The canonical link and the social-card URLs have to be absolute, so link
-   previews will not work until this is right.
+### Custom domain
+
+`docs/CNAME` holds the domain (`www.arielolson.com`). It has to be present in
+the published folder. If it goes missing — which happens when files are dragged
+in and overwrite the one GitHub wrote — GitHub reports the domain as
+**improperly configured (InvalidDNSError)** and stops issuing the TLS
+certificate, so `https://` breaks while `http://` keeps working.
+
+DNS for this domain lives at Squarespace and is already correct:
+
+| Record | Host | Value |
+| --- | --- | --- |
+| A | `@` | `185.199.108.153`, `.109.153`, `.110.153`, `.111.153` |
+| AAAA | `@` | `2606:50c0:8000::153` through `8003::153` |
+| CNAME | `www` | `arielolson.github.io` |
+
+Once the domain verifies, tick **Enforce HTTPS** in Settings → Pages. The
+certificate can take up to 24 hours to issue.
+
+`SITE_URL` at the top of `build_github.py` feeds the canonical link, the
+social-card URLs and the `CNAME` file. Change it in that one place.
 
 ---
 
@@ -42,7 +58,7 @@ generated — never hand-edit the outputs, they get overwritten.
 
 | Output | For | Notes |
 | --- | --- | --- |
-| `site/` | GitHub Pages | Split into `styles.css` / `main.js`, assets committed. 23 files, 0.82 MB |
+| `docs/` | GitHub Pages | Split into `styles.css` / `main.js`, assets committed. 24 files, 0.82 MB |
 | `portfolio-google-sites.html` | Google Sites embed | One self-contained file, 0.81 MB. Paste into Insert → Embed → Embed code |
 | `favicon.*`, `og-image.png` | Icons and link previews | Generated from `favicon.svg` geometry |
 
@@ -51,7 +67,7 @@ generated — never hand-edit the outputs, they get overwritten.
 After any edit to `index.html`:
 
 ```bash
-python3 build_github.py     # -> site/
+python3 build_github.py     # -> docs/
 python3 build_gsites.py     # -> portfolio-google-sites.html
 ```
 
@@ -75,7 +91,7 @@ there, so later builds are instant. `vendor/` should not be committed.
 
 ```
 index.html                   SOURCE — edit this one
-build_github.py              -> site/
+build_github.py              -> docs/
 build_gsites.py              -> portfolio-google-sites.html
 build_icons.py               favicon.svg -> .ico / .png set
 build_og.py                  -> og-image.png (1200x630 link card)
@@ -83,9 +99,10 @@ favicon.svg                  icon artwork; the rasterisers read its geometry
 portrait.png                 headshot, extracted from the LinkedIn PDF
 icon-preview.png             the icon shown at 16 / 32 / 64 / 128 px
 
-site/                        THE DEPLOYABLE SITE
+docs/                        THE DEPLOYABLE SITE  (Pages serves this)
   index.html                 complete document
   404.html                   styled not-found page
+  CNAME                      custom domain; must not be deleted
   .nojekyll                  stops GitHub running Jekyll over the files
   robots.txt, sitemap.xml
   site.webmanifest
