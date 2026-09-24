@@ -15,7 +15,7 @@ export const SHOTS = [
   // New York now: the Empire State to the right of the text
   { id: 'now',         at: 'center', pos: [-10, 6, 10],    look: [-2, 14, -40],   morph: 1,    draw: 1 },
   // Seattle before: across the water to the Needle
-  { id: 'practice',    at: 'center', pos: [-44, 5, -8],    look: [-30, 12, -60],  morph: 1,    draw: 1 },
+  { id: 'practice',    at: 'center', pos: [-40, 6, -10],   look: [-28.4, 12, -58.5], morph: 1, draw: 1 },
   // rise for an overview while the work is discussed
   { id: 'work',        at: 'center', pos: [-18, 14, 12],   look: [-4, 6, -32],    morph: 1.35, draw: 1 },
   // overhead, the figure eight on the ice

@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { PALETTE, ESB, NEEDLE, FOG_DENSITY } from './world.js';
 import { rng, gauss, GLSL_NOISE, GLSL_FOG } from './util.js';
+import { ROWS, BLOCK_D, AVE_W, AVE_MIN, AVE_MAX, blockZ, avenueX, inPark } from './grid.js';
 
 // Kinds of instance, read by the shader.
 const KIND_BUILDING = 0;
@@ -8,21 +9,18 @@ const KIND_SPIRE = 1;
 const KIND_ESB = 2;
 const KIND_MAST = 3;
 
-// Rows of the skyline, nearest first. Far rows fade into the fog, which is
-// what gives the city depth rather than reading as a flat backdrop.
-const ROWS = [
-  { z: -34,  x0: -72,  x1: 72,  hBase: 2.2, hVar: 8,  fill: 0.92 },
-  { z: -44,  x0: -88,  x1: 88,  hBase: 3.2, hVar: 16, fill: 0.95 },
-  { z: -56,  x0: -104, x1: 104, hBase: 2.8, hVar: 14, fill: 0.9 },
-  { z: -71,  x0: -125, x1: 125, hBase: 2.4, hVar: 12, fill: 0.82 },
-  { z: -90,  x0: -150, x1: 150, hBase: 2.0, hVar: 10, fill: 0.72 },
-  { z: -114, x0: -180, x1: 180, hBase: 1.6, hVar: 8,  fill: 0.6 },
-];
-
-// Manhattan core around the Empire State, a lower Seattle cluster around the
-// Needle, open water between.
-function heightProfile(x) {
-  return 0.3 + 1.15 * gauss(x, ESB.x + 1, 22) + 0.45 * gauss(x, NEEDLE.x - 1, 19) + 0.22 * gauss(x, 44, 28);
+// Height of the skyline at a point: a Midtown core around the Empire State, a
+// lower Seattle downtown off to the Needle's west, and low blocks right round
+// Seattle Center so the tower stands clear of its neighbours, as it does.
+function heightProfile(x, z, row) {
+  const dEsb = Math.hypot(x - ESB.x, (z - ESB.z) * 0.8);
+  const dNeedle = Math.hypot(x - NEEDLE.x, z - NEEDLE.z);
+  const dDowntown = Math.hypot(x - (NEEDLE.x - 20), z - (NEEDLE.z + 2));
+  const core = 1.2 * Math.exp(-((dEsb / 24) ** 2));
+  const seattle = 0.5 * Math.exp(-((dDowntown / 15) ** 2));
+  const east = 0.24 * gauss(x, 46, 26);
+  const center = 1 - 0.62 * Math.exp(-((dNeedle / 15) ** 2));
+  return (0.34 + core + seattle + east) * center * (1 - Math.min(0.5, row * 0.03));
 }
 
 // Empire State tiers as fractions of total height (443 m to the mast tip).
@@ -47,41 +45,59 @@ export function createCity({ mobile }) {
     items.push({ x, y, z, w, h, d, kind, seed: r(), tint: extra.tint ?? 0, lit: extra.lit ?? 0.5 });
   };
 
-  const rows = mobile ? ROWS.slice(0, 5) : ROWS;
+  const rows = mobile ? 12 : ROWS;
 
-  for (const row of rows) {
-    let x = row.x0;
-    while (x < row.x1) {
-      const w = 1.2 + r() * 3.0;
-      const d = 1.4 + r() * 3.2;
-      const mid = x + w / 2;
-      x += w + 0.15 + r() * 0.8;
+  const tower = (x, z, w, d, row, maxH = 23) => {
+    const h = Math.min(maxH, 1.8 + Math.pow(r(), 1.5) * 18 * heightProfile(x, z, row));
+    const tint = gauss(x, NEEDLE.x, 34);
+    const lit = 0.24 + r() * 0.4;
+    add(x, 0, z, w, h, d, KIND_BUILDING, { tint, lit });
+    // setbacks and the odd spire on the taller towers
+    if (h > 9 && r() < 0.55) {
+      const w2 = w * (0.45 + r() * 0.25);
+      const d2 = d * (0.45 + r() * 0.25);
+      const h2 = h * (0.16 + r() * 0.26);
+      add(x + (r() - 0.5) * 0.3, h, z, w2, h2, d2, KIND_BUILDING, { tint, lit });
+      if (r() < 0.35) {
+        const hs = 1.4 + r() * 4;
+        add(x, h + h2, z, 0.12, hs, 0.12, KIND_SPIRE, { tint });
+        if (row < 9) beacons.push([x, h + h2 + hs, z]);
+      } else if (h + h2 > 14 && row < 9) {
+        beacons.push([x, h + h2 + 0.1, z]);
+      }
+    }
+  };
 
-      if (r() > row.fill) continue;
-      // open water in front of the Needle, a clear face in front of the Empire State
-      if (mid > NEEDLE.x - 9 && mid < NEEDLE.x + 9 && row.z > NEEDLE.z - 2) continue;
-      if (Math.abs(mid - ESB.x) < w / 2 + 5.5 && row.z > ESB.z - 5) continue;
+  // Buildings fill the blocks between the streets. Each block packs a run of
+  // frontages along its street; some are towers that take the block's full
+  // depth, the rest are split front and back.
+  for (let row = 0; row < rows; row++) {
+    const [zTop, zBot] = blockZ(row);
+    for (let i = AVE_MIN; i < AVE_MAX; i++) {
+      const xa = avenueX(i) + AVE_W / 2;
+      const xb = avenueX(i + 1) - AVE_W / 2;
+      const cx = (xa + xb) / 2, cz = (zTop + zBot) / 2;
+      if (inPark(cx, cz)) continue;                                   // Seattle Center
+      if (row === 1 && Math.abs(cx - ESB.x) < 1) continue;            // the Empire State's own block
+      if (r() < 0.05) continue;                                       // the odd open lot
 
-      const z = row.z + (r() - 0.5) * 2.4;
-      const prof = heightProfile(mid);
-      const h = Math.min(24, row.hBase + Math.pow(r(), 1.55) * row.hVar * prof);
-      const tint = gauss(mid, NEEDLE.x, 34);
-      const lit = 0.24 + r() * 0.4;
-
-      add(mid, 0, z, w, h, d, KIND_BUILDING, { tint, lit });
-
-      if (h > row.hBase + row.hVar * 0.45 && r() < 0.55) {
-        const w2 = w * (0.45 + r() * 0.25);
-        const d2 = d * (0.45 + r() * 0.25);
-        const h2 = h * (0.16 + r() * 0.26);
-        add(mid + (r() - 0.5) * 0.3, h, z, w2, h2, d2, KIND_BUILDING, { tint, lit });
-        if (r() < 0.35) {
-          const hs = 1.4 + r() * 4;
-          add(mid, h + h2, z, 0.12, hs, 0.12, KIND_SPIRE, { tint });
-          if (row.z > -80) beacons.push([mid, h + h2 + hs, z]);
-        } else if (h + h2 > 15 && row.z > -80) {
-          beacons.push([mid, h + h2 + 0.1, z]);
+      let x = xa + 0.15;
+      while (x < xb - 1.1) {
+        const w = Math.min(1.6 + r() * 3.2, xb - 0.15 - x);
+        if (w < 1.1) break;
+        const mid = x + w / 2;
+        if (r() < 0.34) {
+          const d = BLOCK_D - 0.5 - r() * 1.4;
+          tower(mid, zTop - 0.25 - d / 2, w, d, row);
+        } else {
+          const d1 = 2.3 + r() * 1.5;
+          tower(mid, zTop - 0.25 - d1 / 2, w, d1, row);
+          if (r() < 0.8) {
+            const d2 = 2.2 + r() * 1.4;
+            tower(mid + (r() - 0.5) * 0.3, zBot + 0.25 + d2 / 2, w * (0.8 + r() * 0.2), d2, row);
+          }
         }
+        x += w + 0.12 + r() * 0.35;
       }
     }
   }
@@ -229,10 +245,42 @@ function createFacadeMaterial() {
           vec3 lit = wc * inten * on * pane;
 
           // past a certain distance a window is smaller than a pixel: fade the
-          // pattern to its average instead of letting it shimmer
-          float detail = 1.0 - smoothstep(0.35, 0.95, max(fw.x, fw.y));
-          vec3 avg = mix(uWarm, uFrost, 0.4) * vLitA * 0.48 * uPower;
-          col += mix(avg, lit, detail);
+          // pattern to its average instead of letting it shimmer. A face seen
+          // edge-on only loses its columns, so it keeps its floors as bands
+          // rather than flattening into a grey slab.
+          float dX = 1.0 - smoothstep(0.35, 0.95, fw.x);
+          float dY = 1.0 - smoothstep(0.35, 0.95, fw.y);
+          vec3 tone = mix(uWarm, uFrost, 0.4) * vLitA * uPower;
+          float paneRow = smoothstep(0.3 - aa.y, 0.3 + aa.y, fr.y) * (1.0 - smoothstep(0.8 - aa.y, 0.8 + aa.y, fr.y));
+          float rowVar = 0.35 + 1.3 * hash12(vec2(cell.y, vSeed * 71.0 + faceId));
+          vec3 rows = tone * (esb ? 0.5 : 0.72) * paneRow * rowVar * step(0.5, vWorld.y);
+          vec3 avg = tone * 0.48;
+          col += mix(mix(avg, rows, dY), lit, dX * dY);
+
+          // shopfronts: the ground floor is glazed, most shops lit warm, a few
+          // with a neon sign over the door, some shut for the night
+          if (!esb && vWorld.y < 0.46) {
+            float sx = f.x / 0.72;
+            float shop = floor(sx);
+            float sf = fract(sx);
+            float sw = fwidth(sx) * 1.5;
+            float sk = hash12(vec2(shop, vSeed * 53.0 + faceId));
+            float glass = smoothstep(0.06, 0.06 + sw, sf) * (1.0 - smoothstep(0.94 - sw, 0.94, sf))
+                        * smoothstep(0.06, 0.09, vWorld.y) * (1.0 - smoothstep(0.31, 0.34, vWorld.y));
+            float board = smoothstep(0.15, 0.15 + sw, sf) * (1.0 - smoothstep(0.85 - sw, 0.85, sf))
+                       * smoothstep(0.36, 0.375, vWorld.y) * (1.0 - smoothstep(0.415, 0.43, vWorld.y));
+            float open = step(sk, 0.66) * step(hash12(vec2(shop * 1.3, vSeed * 7.0)), uPower);
+            // the interior: warm or cool light, brightest under the ceiling, split by a mullion
+            float hue = hash12(vec2(shop, 3.0 + vSeed));
+            vec3 shopCol = hue < 0.6 ? vec3(1.0, 0.7, 0.44) : hue < 0.85 ? uWarm : vec3(0.82, 0.9, 1.0);
+            float inside = mix(0.55, 1.0, smoothstep(0.08, 0.32, vWorld.y))
+                         * mix(0.7, 1.0, smoothstep(0.02, 0.06 + sw, abs(sf - 0.5)));
+            vec3 neon = sk < 0.14 ? uRose : sk < 0.22 ? uIce : sk < 0.3 ? vec3(1.0, 0.55, 0.3) : vec3(0.0);
+            vec3 front = shopCol * glass * inside * (0.16 + 0.42 * hash12(vec2(shop, 9.0))) * open
+                       + neon * board * 1.5 * open;
+            float shopDetail = 1.0 - smoothstep(0.3, 0.9, max(sw, fwidth(vWorld.y) * 6.0));
+            col += mix(vec3(1.0, 0.8, 0.6) * 0.2 * uPower, front, shopDetail) * step(0.02, vWorld.y);
+          }
 
           if (esb) {
             // the crown is floodlit rose from below, piers catching the light
@@ -244,7 +292,7 @@ function createFacadeMaterial() {
 
         // a faint roofline catching the sky glow gives each block a silhouette
         float roof = smoothstep(vScale.y - 0.08, vScale.y, vObj.y * vScale.y);
-        col += uGlow * roof * 0.25;
+        col += uGlow * roof * (side ? 0.25 : 0.06);
 
         gl_FragColor = vec4(applyFog(col, vDepth), 1.0);
       }

@@ -5,7 +5,26 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 
-// render -> bloom (linear HDR, so only genuine light sources glow)
+// Safety net ahead of bloom. Bloom's blur spreads any invalid pixel into a black
+// square, so NaN or Inf is replaced and runaway values are capped before it runs.
+const SanitizeShader = {
+  uniforms: { tDiffuse: { value: null } },
+  vertexShader: /* glsl */ `
+    varying vec2 vUv;
+    void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }
+  `,
+  fragmentShader: /* glsl */ `
+    uniform sampler2D tDiffuse;
+    varying vec2 vUv;
+    void main() {
+      vec4 c = texture2D(tDiffuse, vUv);
+      if (any(isnan(c)) || any(isinf(c))) c = vec4(0.0, 0.0, 0.0, 1.0);
+      gl_FragColor = clamp(c, 0.0, 48.0);
+    }
+  `,
+};
+
+// render -> sanitise -> bloom (linear HDR, so only genuine light sources glow)
 //        -> output (tone mapping + sRGB)
 //        -> finish (vignette, a trace of chromatic aberration, film grain)
 const FinishShader = {
@@ -52,6 +71,7 @@ export function createPost(renderer, scene, camera, { width, height, dpr, sample
   composer.setSize(width, height);
 
   composer.addPass(new RenderPass(scene, camera));
+  composer.addPass(new ShaderPass(SanitizeShader));
 
   const bloom = new UnrealBloomPass(new THREE.Vector2(width, height), 0.7, 0.55, 1.15);
   composer.addPass(bloom);

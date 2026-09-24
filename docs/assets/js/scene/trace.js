@@ -133,7 +133,10 @@ export function createTrace() {
         vec3 c = mix(uFrost, uRose, smoothstep(0.15, 0.95, m) * (1.0 - smoothstep(1.15, 1.85, m)));
         c = mix(c, uIce, smoothstep(1.45, 2.05, m) * (1.0 - smoothstep(2.45, 2.95, m)));
 
-        float core = 1.0 - abs(vSide);
+        // Multisampling evaluates this slightly outside the ribbon, where |vSide|
+        // passes 1. Unclamped, pow() of a negative returns NaN, and bloom blurs a
+        // single NaN pixel into a black square.
+        float core = clamp(1.0 - abs(vSide), 0.0, 1.0);
         float body = pow(core, 1.4);
         float gap = uDraw - vT;
         float head = exp(-gap * gap * 1600.0) * step(uDraw, 0.999);

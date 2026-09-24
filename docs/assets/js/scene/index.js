@@ -3,6 +3,7 @@ import { PALETTE, FOG_DENSITY } from './world.js';
 import { createSky, createStars } from './sky.js';
 import { createCity } from './city.js';
 import { createNeedle } from './landmarks.js';
+import { createStreets } from './streets.js';
 import { createIce } from './ice.js';
 import { createTrace } from './trace.js';
 import { createSnow } from './snow.js';
@@ -15,8 +16,8 @@ const INTRO_DOLLY = [0, 7, 30];   // the establishing shot starts further out an
 export function startScene({ canvas, reduced, onFirstFrame, onLost }) {
   const mobile = matchMedia('(max-width: 760px), (pointer: coarse)').matches;
   let dpr = Math.min(window.devicePixelRatio || 1, mobile ? 1.5 : 1.75);
-  let width = window.innerWidth;
-  let height = window.innerHeight;
+  let width = Math.max(1, window.innerWidth);
+  let height = Math.max(1, window.innerHeight);
 
   const renderer = new THREE.WebGLRenderer({
     canvas,
@@ -41,16 +42,22 @@ export function startScene({ canvas, reduced, onFirstFrame, onLost }) {
   const stars = createStars(mobile ? 700 : 1600);
   const city = createCity({ mobile });
   const needle = createNeedle();
+  const streets = createStreets({ mobile });
   const trace = createTrace();
   const snow = createSnow(mobile ? 900 : 2400);
   const iceQuality = mobile ? 0.3 : 0.5;
   const ice = createIce({ width: width * dpr, height: height * dpr, quality: iceQuality });
 
-  scene.add(sky, stars, city.mesh, city.beacons, needle.group, ice.mesh, trace.mesh, trace.spray, snow.points);
+  scene.add(sky, stars, streets.group, city.mesh, city.beacons, needle.group, ice.mesh, trace.mesh, trace.spray, snow.points);
+
+  // aircraft fly on a layer the ice's reflection camera leaves out: a plane's
+  // nav lights smeared across the ice read as a glitch, not a reflection
+  camera.layers.enable(1);
+  ice.mesh.getReflectionCamera(camera).layers.set(0);
 
   const post = createPost(renderer, scene, camera, { width, height, dpr, samples: mobile ? 0 : 4 });
 
-  const pointMats = [stars.material, city.beacons.material, snow.material, trace.spray.material];
+  const pointMats = [stars.material, city.beacons.material, snow.material, trace.spray.material, ...streets.pointMaterials];
   function applyDpr() {
     for (const m of pointMats) m.uniforms.uDpr.value = dpr;
   }
@@ -65,6 +72,8 @@ export function startScene({ canvas, reduced, onFirstFrame, onLost }) {
   let time = 0, morph = 0, draw = reduced ? 1 : 0, power = reduced ? 1 : 0;
   let mx = 0, my = 0, tmx = 0, tmy = 0;
   let frame = 0, perfSum = 0, perfCount = 0, degraded = false;
+  // development only (?capture): lets a frame be composed by hand
+  const debug = new URLSearchParams(location.search).has('capture') ? { hold: false } : null;
 
   const first = story.sample(0);
   cam.pos.fromArray(first.pos);
@@ -89,8 +98,8 @@ export function startScene({ canvas, reduced, onFirstFrame, onLost }) {
   }
 
   function resize() {
-    width = window.innerWidth;
-    height = window.innerHeight;
+    width = Math.max(1, window.innerWidth);
+    height = Math.max(1, window.innerHeight);
     camera.aspect = width / height;
     camera.fov = fovFor(camera.aspect);
     camera.updateProjectionMatrix();
@@ -120,6 +129,7 @@ export function startScene({ canvas, reduced, onFirstFrame, onLost }) {
     place();
     trace.update(0.016, 0, 1, false);
     needle.update(0, 1);
+    streets.update(0, 1);
     post.render(0);
   }
 
@@ -142,17 +152,18 @@ export function startScene({ canvas, reduced, onFirstFrame, onLost }) {
     const introDraw = easeInOutCubic(clamp01((time - 1.1) / 2.4));
 
     const shot = story.sample(scrollY);
-    target.pos.fromArray(shot.pos).addScaledVector(new THREE.Vector3().fromArray(INTRO_DOLLY), 1 - intro);
-    target.look.fromArray(shot.look);
-
-    cam.pos.x = damp(cam.pos.x, target.pos.x, 2.4, dt);
-    cam.pos.y = damp(cam.pos.y, target.pos.y, 2.4, dt);
-    cam.pos.z = damp(cam.pos.z, target.pos.z, 2.4, dt);
-    cam.look.x = damp(cam.look.x, target.look.x, 2.8, dt);
-    cam.look.y = damp(cam.look.y, target.look.y, 2.8, dt);
-    cam.look.z = damp(cam.look.z, target.look.z, 2.8, dt);
-    mx = damp(mx, tmx, 2.0, dt);
-    my = damp(my, tmy, 2.0, dt);
+    if (!(debug && debug.hold)) {
+      target.pos.fromArray(shot.pos).addScaledVector(new THREE.Vector3().fromArray(INTRO_DOLLY), 1 - intro);
+      target.look.fromArray(shot.look);
+      cam.pos.x = damp(cam.pos.x, target.pos.x, 2.4, dt);
+      cam.pos.y = damp(cam.pos.y, target.pos.y, 2.4, dt);
+      cam.pos.z = damp(cam.pos.z, target.pos.z, 2.4, dt);
+      cam.look.x = damp(cam.look.x, target.look.x, 2.8, dt);
+      cam.look.y = damp(cam.look.y, target.look.y, 2.8, dt);
+      cam.look.z = damp(cam.look.z, target.look.z, 2.8, dt);
+      mx = damp(mx, tmx, 2.0, dt);
+      my = damp(my, tmy, 2.0, dt);
+    }
 
     morph = damp(morph, shot.morph, 3.0, dt);
     draw = damp(draw, Math.min(shot.draw, introDraw), 3.4, dt);
@@ -167,11 +178,13 @@ export function startScene({ canvas, reduced, onFirstFrame, onLost }) {
     sky.material.uniforms.uTime.value = time;
     snow.material.uniforms.uTime.value = time;
     needle.update(time, power);
+    streets.update(time, power);
     ice.update(time);
     trace.update(dt, morph, draw, true);
 
     // behind an opaque reading panel the scene barely shows; draw it less often
     if (covered && frame % 3 !== 0) return;
+    if (window.innerWidth < 1 || window.innerHeight < 1) return;
 
     const t0 = performance.now();
     post.render(time);
@@ -198,7 +211,7 @@ export function startScene({ canvas, reduced, onFirstFrame, onLost }) {
 
   // Development hook for rendering the social card from the live scene.
   if (new URLSearchParams(location.search).has('capture')) {
-    window.__scene = { renderer, post, story, cam, place, get power() { return power; } };
+    window.__scene = { renderer, post, story, cam, place, debug, update, get power() { return power; } };
   }
 
   return { update, resize, layout: () => story.layout() };
