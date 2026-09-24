@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="Ariel Olson">
+  <rect width="64" height="64" rx="13" ry="13" fill="#07080F"/>
+  <g fill="#F4F1F5">
+    <!-- Space Needle -->
+    <rect x="11.4" y="26" width="3" height="16"/>
+    <rect x="7.4" y="21.4" width="11" height="4.4" rx="2.2"/>
+    <rect x="12.2" y="14.5" width="1.5" height="7"/>
+    <!-- block -->
+    <rect x="22" y="30" width="8" height="12"/>
+    <!-- Empire State -->
+    <rect x="33" y="21" width="9" height="21"/>
+    <rect x="35.6" y="14.5" width="3.8" height="7"/>
+    <rect x="36.9" y="7.5" width="1.5" height="7.4"/>
+    <!-- block -->
+    <rect x="45.5" y="33" width="8" height="9"/>
+  </g>
+  <path d="M9 49.5 Q 32 56 55 48.5" fill="none" stroke="#FF7FB0" stroke-width="3.6" stroke-linecap="round"/>
+</svg>
