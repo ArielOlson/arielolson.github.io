@@ -19,7 +19,11 @@ export function initCareer(reduced) {
       span = 0;
       return;
     }
-    span = Math.max(0, track.scrollWidth - window.innerWidth);
+    // measured to the last card plus the track's end padding: scrollWidth leaves
+    // that padding out, which would stop the pan with the last card on the edge
+    const last = track.lastElementChild;
+    const end = last ? last.getBoundingClientRect().right - track.getBoundingClientRect().left : track.scrollWidth;
+    span = Math.max(0, end + parseFloat(getComputedStyle(track).paddingRight) - window.innerWidth);
     section.style.height = window.innerHeight + span * 1.08 + 'px';
   }
 

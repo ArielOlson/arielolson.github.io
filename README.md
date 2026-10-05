@@ -87,7 +87,9 @@ file system will not work: browsers refuse to load ES modules from `file://`.
 **Words.** All copy is in `docs/index.html`.
 
 **Colours.** Page colours are the CSS variables at the top of
-`assets/css/styles.css`. Scene colours are `PALETTE` in
+`assets/css/styles.css`. `--mist` (secondary text) and `--dim` (small labels)
+were chosen to stay readable over the lit skyline; check any change against the
+sections where text sits over the city, not just over the dark panels. Scene colours are `PALETTE` in
 `assets/js/scene/world.js`. Rose `#FF7FB0` and ice `#7FD9F0` appear in both;
 change them together.
 
@@ -95,7 +97,9 @@ change them together.
 a position, a target, which shape the trace takes, and whether it is drawn.
 Shots are anchored to the sections themselves, so adding or removing content
 does not throw the choreography off. A new section with an `id` can be given
-its own shot by adding a line.
+its own shot by adding a line. A shot can also carry a `portraitLook`, a
+target used only on portrait screens, where the narrower lens would otherwise
+lose a landmark off the edge (the hero uses one to keep the Needle in frame).
 
 **The skyline.** Buildings are generated from a fixed seed in
 `assets/js/scene/city.js`, so the city is identical on every visit. Change the

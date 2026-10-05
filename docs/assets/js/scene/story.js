@@ -5,11 +5,14 @@ import { smooth, lerp } from './util.js';
 // scroll percentage, so the choreography survives any change to the content.
 //
 //   pos / look   camera position and target
+//   portraitLook target on a portrait screen, where the narrow lens would
+//                otherwise lose a landmark off the edge
 //   morph        0 serpentine, 1 compounding curve, 2 figure eight, 3 serpentine again
 //   draw         how much of the trace is carved (0 erases it, 1 draws it whole)
 export const SHOTS = [
   // both skylines across the ice, an establishing shot
-  { id: 'hero',        at: 'start',  pos: [0, 4.6, 30],    look: [-4, 7.5, -40],  morph: 0,    draw: 1 },
+  { id: 'hero',        at: 'start',  pos: [0, 4.6, 30],    look: [-4, 7.5, -40],  morph: 0,    draw: 1,
+    portraitLook: [-7.5, 7.5, -40] },
   // push in as the line lifts into a growth curve
   { id: 'profile',     at: 'center', pos: [-2, 5.2, 17],   look: [0, 8.5, -22],   morph: 1,    draw: 1 },
   // New York now: the Empire State to the right of the text
@@ -31,9 +34,11 @@ export const SHOTS = [
 
 export function createStory(shots = SHOTS) {
   let anchors = [];
+  let portrait = false;
 
   function layout() {
     const vh = window.innerHeight;
+    portrait = window.innerWidth / vh < 0.8;
     const max = Math.max(0, document.documentElement.scrollHeight - vh);
     anchors = [];
     for (const s of shots) {
@@ -61,9 +66,11 @@ export function createStory(shots = SHOTS) {
     const b = anchors[Math.min(i + 1, anchors.length - 1)];
     const span = b.y - a.y;
     const f = span > 0 ? smooth(Math.min(1, Math.max(0, (scrollY - a.y) / span))) : 0;
+    const la = (portrait && a.s.portraitLook) || a.s.look;
+    const lb = (portrait && b.s.portraitLook) || b.s.look;
     for (let k = 0; k < 3; k++) {
       out.pos[k] = lerp(a.s.pos[k], b.s.pos[k], f);
-      out.look[k] = lerp(a.s.look[k], b.s.look[k], f);
+      out.look[k] = lerp(la[k], lb[k], f);
     }
     out.morph = lerp(a.s.morph, b.s.morph, f);
     out.draw = lerp(a.s.draw, b.s.draw, f);
